@@ -1,0 +1,90 @@
+#!/bin/bash
+#. /pi/bin/inc/wait_funcs.sh
+#. /pi/bin/inc/matchers.sh
+#. /pi/bin/inc/docker_utils.sh
+
+function start_inventory(){
+	# mysqld: ready for connections.
+	start_docker inventory "$msg_mysql"
+}
+
+honcho="${HOME}/miniconda3/envs/rasa/bin/honcho"
+rasa="${HOME}/miniconda3/envs/rasa/bin/rasa"
+
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# startup 
+if [ $# -lt 1 ]; then	
+	echo "available opts: all, zk, storm, repl, ..."
+else
+	CMD=$1
+	case "$CMD" in
+	"redis")
+		start_docker redis "$msg_redis"
+		;;
+	"services")
+		$honcho start -f Procfile
+		;;
+	"parse")
+	    curl localhost:5005/model/parse -d '{"text":"i want a restaurant that serves chinese food"}' | json
+	    ;;
+	"talk")
+	    # restart a conversation
+	    curl --request POST \
+          --url http://localhost:5005/conversations/samlet/tracker/events \
+          --header 'content-type: application/json' \
+          --data '{
+            "event": "restart"
+          }'
+        echo ''
+
+        # start talking
+        echo -e "${RED}hello${NC}"
+        curl -s --request POST \
+          --url http://localhost:5005/webhooks/rest/webhook \
+          --header 'content-type: application/json' \
+          --data '{
+            "sender":"samlet", "message": "hello"
+          }' | json
+
+        echo -e "${RED}i want french food${NC}"
+        curl -s --request POST \
+          --url http://localhost:5005/webhooks/rest/webhook \
+          --header 'content-type: application/json' \
+          --data '{
+            "sender":"samlet", "message": "i want french food"
+          }' | json
+
+        echo -e "${RED}paris${NC}"
+        curl -s --request POST \
+          --url http://localhost:5005/webhooks/rest/webhook \
+          --header 'content-type: application/json' \
+          --data '{
+            "sender":"samlet", "message": "paris"
+          }' | json
+	    ;;
+	"interact")
+	    $rasa interactive \
+          -m models/20191230-080328.tar.gz \
+          --endpoints endpoints.yml
+	    ;;
+	"vis")
+	    open http://localhost:5006/visualization.html
+	    ;;
+	"shell")
+	    $rasa shell
+	    ;;
+	"stats")
+	    curl -XGET localhost:5005/conversations/default/tracker?token=thisismysecret | json
+	    ;;
+	"clear")
+	    rm ./models/*
+	    ;;
+	*)
+		# default proc
+		handle_cmd ${@:1}
+		;;
+	esac
+fi
+
